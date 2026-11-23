@@ -26,6 +26,7 @@ export interface CalendarEvent {
   source_url: string;
   start_time: string | null;
   cancelled: boolean;
+  has_published_agenda?: boolean;
 }
 
 /** Fixed endpoints, bounded response sizes/timeouts and two retries; never follows arbitrary source links. */
@@ -80,11 +81,17 @@ export async function discoverCalendarEvents(now = new Date()) {
     if (date < today || date > until || seen.has(row.ID.toLowerCase())) continue;
     if (new Date(`${date}T12:00:00Z`).toISOString().slice(0, 10) !== date) throw new Error("Invalid official calendar date");
     seen.add(row.ID.toLowerCase());
+    const links = Array.isArray(row.MeetingDocumentLink) ? row.MeetingDocumentLink : [];
+    // A cover sheet or a postponement notice is not a published agenda. Require both
+    // the portal flag and a full agenda link for this exact eSCRIBE record.
+    const hasPublishedAgenda = row.HasAgenda === true && links.some((d: any) =>
+      d?.Type === "Agenda" && /^(?:\.pdf|html)$/i.test(String(d.Format))
+      && typeof d.Url === "string" && d.Url.trim().length > 0);
     events.push({ source_type: "escribe", source_id: row.ID.toLowerCase(), meeting_date: date,
       type: mapping[0], organization_name: mapping[1], title: mapping[2], start_time: stamp[4],
-      source_url: PORTAL, cancelled: row.IsCancelled === true || row.Cancelled === true || /\bcancell?ed\b/i.test(String(row.MeetingName))
+      source_url: PORTAL, has_published_agenda: hasPublishedAgenda, cancelled: row.IsCancelled === true || row.Cancelled === true || /\bcancell?ed\b/i.test(String(row.MeetingName))
         // Langford cancels by attaching a "Meeting Cancellation Notice" to the calendar entry.
-        || (Array.isArray(row.MeetingDocumentLink) && row.MeetingDocumentLink.some((d: any) => /\bcancell?ation notice\b/i.test(String(d?.Title)))) });
+        || links.some((d: any) => /\bcancell?ation notice\b/i.test(String(d?.Title))) });
   }
   // The PDF encodes meeting categories by colour. Use a human-reviewed, hash-pinned
   // manifest; a changed PDF is held for review, never interpreted by an LLM/OCR.

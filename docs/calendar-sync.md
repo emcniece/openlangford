@@ -42,7 +42,10 @@ an independently published event on a nearby date; the cancelled record stays
 separate. Active entries (including unknown status) still require reschedule review.
 Once established, the GUID wins over annual fallback dates. Distinct published
 GUIDs may share a date. Only explicit cancellation changes status; disappearance
-from a feed never cancels or deletes an event.
+from a feed never cancels or deletes an event. A fresh, uncancelled eSCRIBE
+entry with a full published agenda can restore its already-linked,
+documentless calendar record to Planned without changing its ID or slug. A
+cover page, bare reappearance, or a different GUID does not reopen it.
 
 Python discovery later assigns the archive path to that same source identity.
 Document ingestion resolves the source pointer before considering legacy

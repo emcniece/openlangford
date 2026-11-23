@@ -32,6 +32,7 @@ class CalendarSync(PostgresCase):
         self.sql(MIGRATION.read_text())
         self.sql((MIGRATION.parent / "20261020162205_47_16_calendar_document_reconciliation.sql").read_text())
         self.sql((Path(__file__).resolve().parents[2] / 'supabase/migrations/20261119150000_cancelled_calendar_placeholder.sql').read_text())
+        self.sql((Path(__file__).resolve().parents[2] / 'supabase/migrations/20261123170000_reopen_same_source_calendar_agenda.sql').read_text())
         self.date = self.sql("SELECT ((now() AT TIME ZONE 'America/Vancouver')::date+7)::text")[0]
         self.event = dict(source_type='official_schedule', source_id='reviewed-entry', meeting_date=self.date,
                           title='Regular Council', type='Regular Council', organization_name='Council',
@@ -86,6 +87,47 @@ class CalendarSync(PostgresCase):
         self.apply([{**self.event,'cancelled':True}])
         self.apply([self.event])
         self.assertEqual(self.sql('SELECT status FROM meetings')[0], 'Cancelled')
+
+    def test_same_guid_full_agenda_reopens_only_its_documentless_placeholder(self):
+        # November 24 shape: an annual placeholder gained the regular Council
+        # eSCRIBE alias; a separate Special entry and advisory cancellation exist.
+        self.event["start_time"] = "17:30"
+        self.apply([self.event])
+        feed = {**self.event, 'source_type': 'escribe', 'source_id': 'regular-guid',
+                'source_url': 'https://pub-langford.escribemeetings.com/meetingscalendarview.aspx'}
+        special = {**feed, 'source_id': 'different-special-guid',
+                   'type': 'Special Council', 'title': 'Special Council'}
+        advisory = {**feed, 'source_id': 'different-advisory-guid', 'type': 'Advisory Committee',
+                    'title': 'Community Advisory Committee', 'organization_name': 'Community Advisory Committee',
+                    'start_time': '19:00', 'cancelled': True}
+        self.apply([{**feed, 'cancelled': True}, special, advisory])
+        before = self.sql("SELECT id,slug,calendar_source_id FROM meetings WHERE title='Regular Council'")[0]
+        self.assertEqual(self.sql("SELECT status FROM meetings WHERE title='Regular Council'")[0], 'Cancelled')
+        self.apply([])  # Missing rows alone never change status.
+        self.apply([feed])  # Older producers or a bare reappearance are insufficient.
+        self.apply([{**feed, 'has_published_agenda': False}])  # Cover/notice only.
+        self.apply([{**feed, 'has_published_agenda': True, 'cancelled': True}])
+        self.assertEqual(self.sql("SELECT status FROM meetings WHERE title='Regular Council'")[0], 'Cancelled')
+
+        active = {**feed, 'has_published_agenda': True}
+        for _ in range(2):
+            result, _ = self.apply([active, advisory])
+            self.assertEqual(json.loads(result)['created'], 0)
+        self.assertEqual(self.sql("SELECT id,slug,calendar_source_id FROM meetings WHERE title='Regular Council'")[0], before)
+        self.assertEqual(self.sql("SELECT status FROM meetings ORDER BY id")[0], "Planned\nPlanned\nCancelled")
+        self.assertEqual(self.sql("SELECT count(*) FROM meetings")[0], '3')
+        self.assertEqual(self.sql("SELECT count(DISTINCT ingested_meeting_id) FROM source_meetings WHERE source_type='escribe'")[0], '3')
+
+    def test_full_agenda_does_not_reopen_unlinked_or_archived_cancellation(self):
+        self.apply([{**self.event, 'cancelled': True}])
+        feed = {**self.event, 'source_type': 'escribe', 'source_id': 'published-guid',
+                'source_url': 'https://pub-langford.escribemeetings.com/meetingscalendarview.aspx',
+                'has_published_agenda': True}
+        self.apply([feed])
+        self.assertEqual(self.sql("SELECT status FROM meetings")[0], 'Cancelled')
+        self.sql("UPDATE meetings SET archive_path='archive/already-processed'")
+        self.apply([feed])
+        self.assertEqual(self.sql("SELECT status FROM meetings")[0], 'Cancelled')
 
     def test_multiple_same_day_published_events_are_held_instead_of_merged(self):
         self.apply([self.event])
