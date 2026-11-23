@@ -41,6 +41,23 @@ it("treats an attached cancellation notice as a cancellation", async () => {
   const result = await discoverCalendarEvents();
   expect(result.events.filter(e => e.source_type === "escribe").map(e => e.cancelled)).toEqual([true, false]);
 });
+it("distinguishes a full posted agenda from a cover or postponement notice and retains explicit cancellation", async () => {
+  const pdf = { Title: "Agenda (PDF)", Type: "Agenda", Format: ".pdf", Url: "/FileStream.ashx?DocumentId=12345" };
+  const notice = { Title: "Postponement Notice of Council Meeting", Type: "AdditionalDocuments" };
+  const cover = { Title: "Agenda Cover Page (PDF)", Type: "AgendaCover", Format: ".pdf", Url: "/FileStream.ashx?DocumentId=12346" };
+  rows = [
+    { ...event, HasAgenda: true, MeetingDocumentLink: [notice, cover, pdf] },
+    { ...event, ID: "22222222-2222-4222-a222-222222222222", HasAgenda: true, MeetingDocumentLink: [notice, cover] },
+    { ...event, ID: "33333333-3333-4333-a333-333333333333", HasAgenda: false, MeetingDocumentLink: [pdf] },
+    { ...event, ID: "44444444-4444-4444-a444-444444444444", HasAgenda: true,
+      MeetingDocumentLink: [pdf, { Title: "Meeting Cancellation Notice", Type: "AdditionalDocuments" }] },
+    { ...event, ID: "55555555-5555-4555-a555-555555555555", HasAgenda: true,
+      MeetingDocumentLink: [{ Title: "Agenda (HTML)", Type: "Agenda", Format: "HTML", Url: "/Meeting.aspx?Agenda=Agenda" }] },
+  ];
+  const result = await discoverCalendarEvents();
+  expect(result.events.filter(e => e.source_type === "escribe").map(e => [e.has_published_agenda, e.cancelled]))
+    .toEqual([[true, false], [false, false], [false, false], [true, true], [true, false]]);
+});
 it("holds a changed PDF instead of interpreting its dates or colours", async () => {
   pdfBytes = new TextEncoder().encode("changed official calendar"); rows = [event];
   const result = await discoverCalendarEvents();
