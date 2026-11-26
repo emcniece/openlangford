@@ -40,7 +40,7 @@ export default [
   route("signup", "routes/signup.tsx"),
   route("logout", "routes/logout.tsx"),
   route("forgot-password", "routes/forgot-password.tsx"),
-  route("auth/callback", "routes/auth.callback.tsx"),
+  route("auth/recovery", "routes/auth.recovery.tsx"),
   route("reset-password", "routes/reset-password.tsx"),
   route("settings", "routes/settings.tsx"),
   route("settings/api-keys", "routes/settings.api-keys.tsx"),

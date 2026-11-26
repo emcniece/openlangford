@@ -39,7 +39,8 @@ export async function action({ request, context }: Route.ActionArgs) {
 
   const { supabase, headers } = createSupabaseServerClient(request);
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${url.origin}/auth/callback?next=/reset-password`,
+    // One fixed URL, no query string, so it matches the Redirect URLs allowlist exactly.
+    redirectTo: `${url.origin}/auth/recovery`,
   });
   // Log provider failures, but answer the same either way so this form can't be
   // used to find out which emails have accounts.

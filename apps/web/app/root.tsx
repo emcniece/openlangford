@@ -125,7 +125,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     const skipRedirectPaths = [
       "/onboarding", "/login", "/logout", "/signup",
       // Password recovery signs the person in first; it must work before onboarding is done.
-      "/forgot-password", "/reset-password", "/auth/callback",
+      "/forgot-password", "/reset-password", "/auth/recovery",
     ];
     const isApiRoute = pathname.startsWith("/api/") || pathname.startsWith("/email/unsubscribe/");
     const isAdminRoute = pathname.startsWith("/admin") || pathname === "/speaker-alias";

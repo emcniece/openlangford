@@ -1,6 +1,7 @@
 import { Form, Link, redirect, useActionData, useNavigation } from "react-router";
 import type { Route } from "./+types/reset-password";
 import { createSupabaseServerClient } from "../lib/supabase.server";
+import { clearRecoveryGrant, requireRecoveryGrant } from "../lib/recovery-grant.server";
 import { Input } from "../components/ui/input";
 import { Button } from "../components/ui/button";
 
@@ -9,12 +10,13 @@ export const meta: Route.MetaFunction = () => [
   { name: "robots", content: "noindex, nofollow" },
 ];
 
-// The recovery link signs the person in (see auth.callback.tsx); without that
-// session there is nothing to reset.
+// Being signed in isn't enough: the session must have come through a recovery
+// link, which leaves a grant tied to this user and session (auth.recovery.tsx).
 export async function loader({ request }: Route.LoaderArgs) {
   const { supabase, headers } = createSupabaseServerClient(request);
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) return redirect("/forgot-password?expired=1", { headers });
+  if (!(await requireRecoveryGrant(supabase, request))) {
+    return redirect("/forgot-password?expired=1", { headers });
+  }
   return null;
 }
 
@@ -32,12 +34,15 @@ export async function action({ request }: Route.ActionArgs) {
   if (password !== confirm) return { error: "The two passwords don't match." };
 
   const { supabase, headers } = createSupabaseServerClient(request);
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return redirect("/forgot-password?expired=1", { headers });
+  if (!(await requireRecoveryGrant(supabase, request))) {
+    return redirect("/forgot-password?expired=1", { headers });
+  }
 
   const { error } = await supabase.auth.updateUser({ password });
   if (error) return { error: error.message };
 
+  // One use: the grant goes as soon as the password has changed.
+  headers.append("Set-Cookie", clearRecoveryGrant(request));
   return redirect("/settings", { headers });
 }
 
